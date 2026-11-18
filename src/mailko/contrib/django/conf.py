@@ -11,6 +11,7 @@
 ``MAILKO_WEBHOOK_SECRET``          ``whsec_…``; a list (or commas) for several projects.
 ``MAILKO_WEBHOOK_TOLERANCE``       Seconds a signature stays valid. ``300``.
 ``MAILKO_WEBHOOK_DEDUP_SECONDS``   How long an event id is remembered. ``86400``; 0 = never.
+``MAILKO_WEBHOOK_MAX_BYTES``       Largest webhook body taken. ``262144`` (256 KB).
 =================================  =============================================
 """
 
@@ -32,6 +33,7 @@ DEFAULTS: dict[str, Any] = {
     "MAILKO_WEBHOOK_SECRET": "",
     "MAILKO_WEBHOOK_TOLERANCE": WEBHOOK_TOLERANCE_SECONDS,
     "MAILKO_WEBHOOK_DEDUP_SECONDS": 24 * 60 * 60,
+    "MAILKO_WEBHOOK_MAX_BYTES": 256 * 1024,
 }
 
 

@@ -103,3 +103,49 @@ def test_dedup_can_be_turned_off(received):
     _post()
     _post()
     assert len(received) == 4
+
+
+@override_settings(MAILKO_WEBHOOK_SECRET=SECRET, MAILKO_WEBHOOK_MAX_BYTES=100)
+def test_a_body_too_large_is_refused_before_reading_it(received):
+    assert _post().status_code == 413
+    assert not received
+
+
+@override_settings(MAILKO_WEBHOOK_SECRET=SECRET)
+def test_an_event_being_handled_is_not_handled_twice_at_once(received):
+    from django.core.cache import cache
+
+    from mailko.contrib.django.views import PROCESSING, SEEN_PREFIX
+
+    cache.set(f"{SEEN_PREFIX}{EVENT['id']}", PROCESSING, 60)
+    response = _post()
+    assert response.status_code == 409
+    assert not received
+
+    cache.delete(f"{SEEN_PREFIX}{EVENT['id']}")
+    assert _post().status_code == 200
+    assert _post().json()["duplicate"] is True
+    assert len(received) == 2
+
+
+@override_settings(MAILKO_WEBHOOK_SECRET=SECRET)
+def test_an_event_remembered_by_0_1_0_is_still_a_duplicate(received):
+    from django.core.cache import cache
+
+    from mailko.contrib.django.views import SEEN_PREFIX
+
+    cache.set(f"{SEEN_PREFIX}{EVENT['id']}", 1, 60)  # what 0.1.0 wrote
+    assert _post().json() == {"received": True, "duplicate": True}
+    assert not received
+
+
+@override_settings(MAILKO_WEBHOOK_SECRET=SECRET)
+def test_a_handled_event_answers_200_even_if_the_cache_fails_to_remember(received, monkeypatch):
+    from django.core.cache import cache
+
+    def broken_set(*args, **kwargs):
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(cache, "set", broken_set)
+    assert _post().json() == {"received": True}
+    assert len(received) == 2
