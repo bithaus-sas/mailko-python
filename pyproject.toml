@@ -46,7 +46,7 @@ path = "src/mailko/_version.py"
 packages = ["src/mailko"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/mailko", "tests", "README.md", "CHANGELOG.md", "LICENSE"]
+include = ["src/mailko", "tests", "scripts", "README.md", "CHANGELOG.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

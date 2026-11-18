@@ -5,6 +5,12 @@ versiones [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- `saas-bump.yml`: cuando una versión queda publicada en PyPI, abre un PR en cada SaaS que usa el SDK (la
+  variable `SAAS_REPOS` del repositorio; por defecto `klopi-api`) que mueve su pin `mailko[...]==X.Y.Z` y trae
+  las notas de esa versión. Necesita el secreto `SAAS_REPOS_TOKEN`.
+
 ## [0.1.1] - 2026-11-17
 
 ### Added

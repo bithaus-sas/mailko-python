@@ -261,6 +261,8 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ```
 
 Una versión nueva se publica en PyPI sola al subir su tag (`vX.Y.Z`): ver `.github/workflows/publish.yml`.
+Cuando queda publicada, `.github/workflows/saas-bump.yml` abre un PR en cada SaaS de Bithaus que usa el SDK
+(la variable `SAAS_REPOS` del repositorio, una lista JSON) para mover su pin a la versión nueva.
 
 ## Licencia
 

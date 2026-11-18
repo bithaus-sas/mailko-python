@@ -1,0 +1,151 @@
+# A version of this library published on PyPI (publish.yml succeeded) opens a
+# pull request in every SaaS that uses it: the pin `mailko[...]==X.Y.Z` of its
+# `requirements/base.txt` moves to the new version and the PR carries the
+# version's CHANGELOG. Never before PyPI has it: the SaaS' CI installs it from
+# there. Each SaaS's CI runs on the PR; merging it is the owner's call
+# (merging to main deploys that SaaS).
+#
+# Needs, in this repository's settings:
+# - the secret SAAS_REPOS_TOKEN: a fine-grained token of bithaus-sas (or a
+#   GitHub App's) with «Contents: read and write» and «Pull requests: read and
+#   write» on the SaaS repos. GITHUB_TOKEN cannot write to other repos, and a
+#   push made with it would not run their CI.
+# - optionally the variable SAAS_REPOS, a JSON list of the repos under
+#   bithaus-sas that use the SDK (default ["klopi-api"]): adding a SaaS is
+#   editing that variable, not this file.
+name: PR en los SaaS
+
+on:
+  workflow_run:
+    workflows: ["Publish to PyPI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Etiqueta a llevar a los SaaS (v0.2.0)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saas-bump-${{ inputs.tag || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: ${{ matrix.repo }}
+    # A tag's publish run names the tag as its head branch.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: ${{ fromJSON(vars.SAAS_REPOS || '["klopi-api"]') }}
+    env:
+      TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+      REPO: bithaus-sas/${{ matrix.repo }}
+      BRANCH: chore/mailko-sdk-${{ inputs.tag || github.event.workflow_run.head_branch }}
+      GH_TOKEN: ${{ secrets.SAAS_REPOS_TOKEN }}
+    steps:
+      - name: Check the tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::$TAG no es una etiqueta de versión"; exit 1; }
+          [ -n "$GH_TOKEN" ] || { echo "::error::Falta el secreto SAAS_REPOS_TOKEN"; exit 1; }
+
+      - name: The version is on PyPI
+        run: |
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null "https://pypi.org/pypi/mailko/${TAG#v}/json" && exit 0
+            sleep 10
+          done
+          echo "::error::mailko ${TAG#v} no está en PyPI"
+          exit 1
+
+      # The script and the CHANGELOG of the default branch; the tag only has
+      # to exist.
+      - name: This library
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: sdk
+
+      - name: The SaaS
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.REPO }}
+          token: ${{ secrets.SAAS_REPOS_TOKEN }}
+          path: saas
+
+      - name: Open the pull request
+        working-directory: saas
+        run: |
+          set -euo pipefail
+          # A PR of this tag, open, merged or closed by its owner: nothing to
+          # do (a closed one was a «no»; delete its branch to try again).
+          if [ -n "$(gh pr list --repo "$REPO" --head "$BRANCH" --state all --json number --jq '.[].number')" ]; then
+            echo "Ya hay un PR de $TAG en $REPO: nada que hacer."
+            exit 0
+          fi
+          git -C ../sdk rev-parse --verify "refs/tags/$TAG^{commit}" > /dev/null || {
+            echo "::error::La etiqueta $TAG no existe en mailko-python"
+            exit 1
+          }
+          status=0
+          previous=$(python3 ../sdk/scripts/saas_bump.py pin requirements/base.txt "$TAG") || status=$?
+          if [ "$status" = 3 ]; then
+            echo "$REPO ya usa $TAG o una versión más nueva: nada que hacer."
+            exit 0
+          fi
+          if [ "$status" = 4 ]; then
+            echo "::error::$REPO no fija mailko en requirements/base.txt como mailko[...]==X.Y.Z (¿cambió la línea?)"
+            exit 1
+          fi
+          if [ "$status" = 5 ]; then
+            echo "::error::$REPO fija mailko con --hash: hay que moverlo a mano"
+            exit 1
+          fi
+          [ "$status" = 0 ] || exit "$status"
+
+          notes=$(python3 ../sdk/scripts/saas_bump.py notes ../sdk/CHANGELOG.md "$TAG")
+          {
+            echo "Mailko publicó el SDK \`mailko\` **$TAG** en PyPI. Este PR mueve el pin de \`requirements/base.txt\` de \`$previous\` a \`${TAG#v}\`."
+            echo
+            echo "## Qué cambió"
+            echo
+            echo "${notes:-Sin notas en el CHANGELOG para esta versión.}"
+            echo
+            if git -C ../sdk rev-parse -q --verify "refs/tags/$previous" > /dev/null; then
+              echo "Todos los cambios: https://github.com/bithaus-sas/mailko-python/compare/$previous...$TAG"
+              echo
+            fi
+            echo "## Antes de fusionar"
+            echo
+            echo "- Que el CI pase (corre la suite con la versión nueva)."
+            echo "- Si algo de lo nuevo le toca a este SaaS (un error, una opción, un evento), adáptalo en este mismo PR."
+            echo "- Fusionar a \`main\` despliega este SaaS."
+            echo
+            echo "_Abierto por el workflow \`saas-bump.yml\` de mailko-python._"
+          } > ../pr-body.md
+
+          git config user.name "mailko-sdk-bot"
+          git config user.email "mailko-sdk-bot@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -am "chore(deps): mailko SDK $TAG"
+          # The branch is this workflow's: a run that pushed it and failed
+          # before the PR is overwritten.
+          git push --force origin "$BRANCH"
+          gh pr create --repo "$REPO" --base main --head "$BRANCH" \
+            --title "chore(deps): mailko SDK $TAG" --body-file ../pr-body.md
+
+          # An open bump of an OLDER tag is superseded: closed, its branch
+          # deleted. One of a newer tag stays (this was a hotfix of an older line).
+          gh pr list --repo "$REPO" --state open --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("chore/mailko-sdk-v")) | "\(.number) \(.headRefName)"' |
+          while read -r number head; do
+            other=${head#chore/mailko-sdk-}
+            [ "$other" != "$TAG" ] || continue
+            if [ "$(printf '%s\n%s\n' "$other" "$TAG" | sort -V | tail -n1)" = "$TAG" ]; then
+              gh pr close "$number" --repo "$REPO" --delete-branch --comment "Reemplazado por el PR de $TAG."
+            fi
+          done
