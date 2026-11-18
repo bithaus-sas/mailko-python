@@ -5,6 +5,30 @@ versiones [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-17
+
+### Added
+
+- `mailko.ConfigurationError` (también `ValueError`): una llave que falta o no es de Mailko, o un `base_url` sin
+  https. El backend de Django ya no lanza un `ValueError` suelto, que no se distinguía de un fallo de red.
+- `MAILKO_WEBHOOK_MAX_BYTES` (256 KB): la vista del webhook rechaza con 413 un cuerpo más grande antes de leerlo.
+
+### Changed
+
+- El webhook reserva cada evento antes de procesarlo (hasta 5 minutos): una segunda entrega del mismo evento
+  mientras la primera corre recibe 409 y Mailko la reintenta después, en vez de procesarse dos veces a la vez. Lo
+  que 0.1.0 dejó marcado en la caché sigue contando como ya procesado.
+- Si la caché falla al marcar un evento ya procesado, la vista responde 200 igual (antes, 500 y Mailko lo
+  reenviaba).
+- Sin `MAILKO_API_KEY`, el backend lanza `ConfigurationError`, que sigue siendo `MessageRejectedError`: el código
+  que lo capturaba en 0.1.0 no cambia.
+
+### Docs
+
+- Idempotencia: el reintento debe llevar el mismo cuerpo; qué estados no guarda Mailko (5xx, 402, 403, 409, 423,
+  429) y por qué `idempotency_key_reused` no significa «ya enviado».
+- Las respuestas de la vista del webhook (200, 400, 404, 409, 413, 500).
+
 ## [0.1.0] - 2026-11-17
 
 ### Added
