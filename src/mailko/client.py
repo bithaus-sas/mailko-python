@@ -36,7 +36,14 @@ from mailko.constants import (
     PROJECT_KEY_PREFIXES,
     VERSION_HEADER,
 )
-from mailko.errors import APIConnectionError, IdempotencyError, RateLimitError, ServerError, error_from_response
+from mailko.errors import (
+    APIConnectionError,
+    ConfigurationError,
+    IdempotencyError,
+    RateLimitError,
+    ServerError,
+    error_from_response,
+)
 
 #: Network failures after which a request may be retried.
 RETRYABLE_EXCEPTIONS = (
@@ -51,12 +58,13 @@ WRITE_METHODS = frozenset({"POST", "PATCH", "PUT", "DELETE"})
 
 def _check_key(api_key: str) -> str:
     if not isinstance(api_key, str) or not api_key.strip():
-        raise ValueError("Falta la llave de Mailko (mk_live_… o mk_test_…).")
+        raise ConfigurationError("Falta la llave de Mailko (mk_live_… o mk_test_…).", code="no_key")
     api_key = api_key.strip()
     if not api_key.startswith(PROJECT_KEY_PREFIXES + PARTNER_KEY_PREFIXES):
-        raise ValueError(
+        raise ConfigurationError(
             "La llave de Mailko debe empezar por mk_live_ o mk_test_ (o mkp_ si es de una app socia). "
-            "Créala en Configuración → Desarrolladores."
+            "Créala en Configuración → Desarrolladores.",
+            code="invalid_key",
         )
     return api_key
 
@@ -67,7 +75,9 @@ def _check_base_url(base_url: str) -> str:
     host = (parts.hostname or "").lower()
     local = host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test"))
     if not host or parts.scheme not in ("https", "http") or (parts.scheme == "http" and not local):
-        raise ValueError(f"base_url debe empezar por https:// (por ejemplo {DEFAULT_BASE_URL}).")
+        raise ConfigurationError(
+            f"base_url debe empezar por https:// (por ejemplo {DEFAULT_BASE_URL}).", code="invalid_base_url"
+        )
     return str(base_url).strip().rstrip("/")
 
 

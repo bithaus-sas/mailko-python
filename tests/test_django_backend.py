@@ -191,7 +191,7 @@ def test_refuses_before_calling():
 
 @override_settings(MAILKO_API_KEY="")
 def test_without_a_key_it_says_so():
-    with pytest.raises(mailko.MessageRejectedError) as caught:
+    with pytest.raises(mailko.ConfigurationError) as caught:
         mail.send_mail("x", "x", None, ["ana@correo.com"])
     assert caught.value.code == "no_key"
     assert mail.send_mail("x", "x", None, ["ana@correo.com"], fail_silently=True) == 0
@@ -203,3 +203,20 @@ def test_one_failure_does_not_hide_the_others_when_silent():
     responses.post(f"{API}/emails", json=ACCEPTED, status=202)
     messages = [EmailMessage("x", "x", None, ["a@correo.com"]), EmailMessage("x", "x", None, ["b@correo.com"])]
     assert get_connection(fail_silently=True).send_messages(messages) == 1
+
+
+@override_settings(MAILKO_API_KEY="no-es-de-mailko")
+def test_a_malformed_key_is_a_configuration_error_not_a_bare_valueerror():
+    with pytest.raises(mailko.ConfigurationError) as caught:
+        mail.send_mail("x", "x", None, ["ana@correo.com"])
+    assert caught.value.code == "invalid_key"
+    assert isinstance(caught.value, mailko.MailkoError)
+    assert mail.send_mail("x", "x", None, ["ana@correo.com"], fail_silently=True) == 0
+
+
+@override_settings(MAILKO_API_KEY="")
+def test_a_missing_key_is_still_caught_as_in_0_1_0():
+    with pytest.raises(mailko.MessageRejectedError):
+        mail.send_mail("x", "x", None, ["ana@correo.com"])
+    with pytest.raises(ValueError):
+        mail.send_mail("x", "x", None, ["ana@correo.com"])

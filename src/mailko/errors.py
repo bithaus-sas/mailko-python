@@ -41,6 +41,13 @@ class MessageRejectedError(MailkoError):
     have refused it anyway (no recipient, too many, too large…)."""
 
 
+class ConfigurationError(MessageRejectedError, ValueError):
+    """The library is set up wrong: no key, a key that is not Mailko's, a
+    ``base_url`` without https. Retrying never fixes it. Also a ``ValueError``,
+    as it was before 0.1.1, and a ``MessageRejectedError``: 0.1.0's backend raised
+    that one (``code="no_key"``) for a missing key."""
+
+
 class SuppressedError(MailkoError):
     """Mailko took the request and sent nothing: every recipient is on the
     project's suppression list (a hard bounce or a complaint before).

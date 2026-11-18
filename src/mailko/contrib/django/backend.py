@@ -40,7 +40,7 @@ from django.core.mail.backends.base import BaseEmailBackend
 from mailko.client import Mailko
 from mailko.constants import ALLOWED_HEADERS, MAX_LINE
 from mailko.contrib.django import conf
-from mailko.errors import MailkoError, MessageRejectedError, SuppressedError
+from mailko.errors import ConfigurationError, MailkoError, MessageRejectedError, SuppressedError
 from mailko.message import (
     UNNAMED_ATTACHMENT,
     Attachment,
@@ -214,8 +214,7 @@ class EmailBackend(BaseEmailBackend):
                 # Mailko took it and had nobody to send it to: the rest of
                 # the batch still goes; it is raised once they did.
                 suppressed = suppressed or exc
-            except (MailkoError, ValueError):
-                # ValueError: a missing or malformed key (Mailko(...) refuses it).
+            except MailkoError:
                 if not self.fail_silently:
                     raise
         if suppressed is not None and not self.fail_silently:
@@ -234,7 +233,7 @@ class EmailBackend(BaseEmailBackend):
         check_email(body)
         api_key = self.api_key_for(message)
         if not api_key:
-            raise MessageRejectedError("Falta MAILKO_API_KEY: el envío por Mailko no está configurado.", code="no_key")
+            raise ConfigurationError("Falta MAILKO_API_KEY: el envío por Mailko no está configurado.", code="no_key")
         key = self.idempotency_key_for(message)
         # The same key with the same body is answered with the first answer
         # (Mailko replays it); with another body it is an IdempotencyError —
