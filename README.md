@@ -74,7 +74,15 @@ defecto) **con la misma clave** solo cuando es seguro: Mailko no respondió, la 
 de Mailko (`5xx`). Así un reintento nunca envía el correo dos veces.
 
 Si reintentas por tu cuenta (una tarea de Celery), pasa **siempre la misma** `idempotency_key` para el mismo
-correo, por ejemplo `f"pedido-{pedido.id}-confirmacion"`.
+correo, por ejemplo `f"pedido-{pedido.id}-confirmacion"`, **con exactamente el mismo contenido**:
+
+- Misma clave y mismo cuerpo: Mailko responde lo mismo que la primera vez y no envía de nuevo.
+- Misma clave y otro cuerpo (otro asunto, otra etiqueta, otro adjunto): `IdempotencyError` con code
+  `idempotency_key_reused`. No lo trates como «ya enviado»: puede ser otro correo. Si tu reintento cambia algo
+  del cuerpo (un id de registro nuevo en `tags`, por ejemplo), reutiliza el del primer intento.
+  Mailko también compara la llave: la misma clave enviada con otra API key da el mismo error.
+- Mailko no guarda la respuesta de un `5xx` ni de un `402`, `403`, `409`, `423` o `429`: un reintento con la
+  misma clave se vuelve a evaluar (por ejemplo, después de recargar saldo o de verificar el dominio).
 
 ```python
 client = mailko.Mailko(
@@ -93,6 +101,7 @@ mirar tu código), `status`, `request_id` (dáselo a soporte) y, en `validation_
 | Clase | Cuándo |
 |---|---|
 | `MessageRejectedError` | La librería lo rechazó antes de llamar (sin destinatario, muy grande…). |
+| `ConfigurationError` | Falta la llave, no es de Mailko o `base_url` no es https. Reintentar no sirve. Es también `MessageRejectedError` y `ValueError`. |
 | `BadRequestError` | 400, 413, 415, 422: la petición está mal; corrígela. |
 | `AuthenticationError` | 401: la llave falta, está mal, se revocó o venció. |
 | `PaymentRequiredError` | 402: el plan o el saldo no alcanza (`insufficient_balance`…). |
@@ -199,7 +208,16 @@ def on_mailko_email(sender, event, type, email, **kwargs):
         ...
 ```
 
-Si tu receptor lanza una excepción, la vista responde 500 y Mailko reenvía el evento más tarde.
+Lo que responde la vista:
+
+| Respuesta | Cuándo |
+|---|---|
+| `200` | Procesado, o ya procesado antes (`"duplicate": true`). |
+| `400` | La firma falta, no corresponde o venció. |
+| `404` | `MAILKO_WEBHOOK_SECRET` no está configurado: la URL queda cerrada. |
+| `409` | Otra entrega del mismo evento se está procesando en este momento (la reserva dura hasta 5 minutos); Mailko lo reintenta más tarde. Si tu receptor puede tardar más, hazlo idempotente. |
+| `413` | El cuerpo pasa de `MAILKO_WEBHOOK_MAX_BYTES` (se lee como máximo un byte de más). Si subes ese límite, súbelo también en `DATA_UPLOAD_MAX_MEMORY_SIZE` si tu servidor lo aplica. |
+| `500` | Tu receptor lanzó una excepción: el evento no queda marcado y Mailko lo reenvía más tarde. |
 
 ### Configuración
 
@@ -213,7 +231,8 @@ Si tu receptor lanza una excepción, la vista responde 500 y Mailko reenvía el 
 | `MAILKO_MAX_RETRY_AFTER` | El `Retry-After` más largo que se espera dentro de un envío. | `10` |
 | `MAILKO_WEBHOOK_SECRET` | `whsec_…`; una lista o separados por coma para varios proyectos. | — |
 | `MAILKO_WEBHOOK_TOLERANCE` | Segundos que vale una firma. | `300` |
-| `MAILKO_WEBHOOK_DEDUP_SECONDS` | Cuánto se recuerda un evento ya procesado; `0` lo apaga. Usa la caché `default` de Django: con varios procesos necesita una compartida (Redis, Memcached, base de datos), no `LocMemCache`. Aun así, deja tu receptor idempotente: dos entregas simultáneas del mismo evento pueden pasar las dos. | `86400` |
+| `MAILKO_WEBHOOK_DEDUP_SECONDS` | Cuánto se recuerda un evento ya procesado; `0` lo apaga. Usa la caché `default` de Django: con varios procesos necesita una compartida (Redis, Memcached, base de datos), no `LocMemCache`, o cada proceso recuerda solo lo suyo. | `86400` |
+| `MAILKO_WEBHOOK_MAX_BYTES` | El cuerpo más grande que acepta la vista del webhook. | `262144` (256 KB) |
 
 ## Todo lo demás de la API
 
