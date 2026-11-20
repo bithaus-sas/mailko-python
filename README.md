@@ -250,7 +250,7 @@ client.webhook_endpoints.create(url="https://tienda.co/mailko/webhook/", topics=
 client.campaigns.send(campaign_id, confirm=True)
 ```
 
-La referencia completa de la API está en [api.mailko.co/docs](https://api.mailko.co/docs/).
+La referencia completa de la API está en [docs.mailko.co](https://docs.mailko.co/). Para un asistente de IA o un agente de código, la misma referencia en Markdown está en [docs.mailko.co/llms.txt](https://docs.mailko.co/llms.txt) y en OpenAPI en [docs.mailko.co/openapi.json](https://docs.mailko.co/openapi.json).
 
 ## Desarrollo
 

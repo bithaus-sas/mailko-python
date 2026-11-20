@@ -5,6 +5,10 @@ versiones [SemVer](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Cambiado
+
+- El README enlaza la referencia pública de la API en [docs.mailko.co](https://docs.mailko.co/), con su versión en Markdown (`/llms.txt`) y en OpenAPI.
+
 ### Added
 
 - `saas-bump.yml`: cuando una versión queda publicada en PyPI, abre un PR en cada SaaS que usa el SDK (la
